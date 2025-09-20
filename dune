@@ -1,0 +1,5 @@
+(executable
+ (name snake)
+ (modules deque snake)
+ (libraries unix)
+)
