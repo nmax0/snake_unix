@@ -1,3 +1,8 @@
+(*
+  ocamlc -o main -I +unix unix.cma main.ml
+./main
+ *)
+
 (* draw.ml — first rendering with Unix *)
 
 open Unix
@@ -33,7 +38,7 @@ let draw_box w h (px, py) =
   clear_screen ();
   (* top border *)
   print_string "+";
-  for _=1 to w do print_string "-" done;
+  for _=1 to w do print_string "—" done;
   print_string "+\n";
 
   (* inside *)
@@ -49,8 +54,8 @@ let draw_box w h (px, py) =
   done;
   
   (* bottom border *)
-  print_string "+";
-  for _=1 to w do print_string "-" done;
+ print_string "+";
+  for _=1 to w do print_string "—" done;
   print_string "+\n";
   flush Stdlib.stdout
 
@@ -85,41 +90,63 @@ let parse_input (s:string) : dir * bool =
   in
   (d, quit)
 
+
+let string_of_dir d =
+  match d with
+  | Up -> "Up"
+  | Down -> "Down"
+  | Left -> "Left"
+  | Right -> "Right"
+  | None -> "None"
+
 (* ---- main loop ---- *)
 let () =
   enable_raw ();
   Random.self_init ();
 
-  let w, h = 30, 15 in
+  let w, h = 30, 20 in
   let x = ref (w/2) and y = ref (h/2) in
+  let dir_xy  = ref Up in
   let running = ref true in
 
   let clamp v lo hi = max lo (min hi v) in
   let apply_dir = function
-    | Up    -> y := clamp (!y - 1) 0 (h-1)
+    | Up    -> y := clamp (! y - 1) 0 (h-1)
     | Down  -> y := clamp (!y + 1) 0 (h-1)
     | Left  -> x := clamp (!x - 1) 0 (w-1)
     | Right -> x := clamp (!x + 1) 0 (w-1)
     | None  -> ()
   in
 
-  let target_fps = 20.0 in
-  let dt = 1.0 /. target_fps in
-
+  let period = 1.0 in (* seconds *)
+  
   while !running do
-    (* input *)
-    (match read_available () with
-     | None -> ()
-     | Some s ->
-         let d, quit = parse_input s in
-         if quit then running := false;
-         apply_dir d);
+    let t0 = Unix.gettimeofday () in
+    let readable, _, _ = Unix.select [Unix.stdin] [] [] period in
 
-    (* render *)
+    (* if there's input, drain all available inputs (non-blocking) *)
+    if readable <> [] then begin
+      let rec drain_inputs () =
+        
+        match read_available () with
+        | None -> ()          (* no more available right now *)
+        | Some s ->
+           let d, quit = parse_input s in
+            if d <> None && d <> !dir_xy then dir_xy := d;
+            if quit then running := false;
+            drain_inputs ()
+      in
+      drain_inputs () end;
+
+    (* do the periodic work once per period *)
+    apply_dir !dir_xy;
     draw_box w h (!x, !y);
+    Printf.printf "%d, %d\n%!" !x !y;
 
-    (* throttle CPU *)
-    sleepf dt
+    (* keep stable rate: sleep remaining time if any *)
+    let elapsed = Unix.gettimeofday () -. t0 in
+    if elapsed < period then Unix.sleepf (period -. elapsed) else ()
+
   done;
 
   print_endline "\nBye!";
