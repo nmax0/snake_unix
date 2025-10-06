@@ -1,6 +1,4 @@
-(*
-dune exec ./snake.exe
- *)
+(* dune exec ./snake.exe *)
 (* \027 = ESC *)
 
 open Unix
@@ -15,7 +13,7 @@ let enable_raw () =
   let b = { a with c_icanon = false; c_echo = false; c_vmin = 0; c_vtime = 0 } in
   tcsetattr fd TCSANOW b
 
-let restore_terminal () =
+let restore_terminal () = (* restore terminal settings *)
   (match !orig_attr with
    | None -> ()
    | Some a ->
@@ -28,7 +26,7 @@ let () = at_exit restore_terminal
 
 let clear_screen () = Printf.printf "\027[2J\027[H"
 
-let draw_box w h body apple =
+let draw_box w h body apple = (* draw box in unix terminal *)
   clear_screen ();
   let grid = Array.init h (fun _ -> Array.make w " ") in
 
@@ -66,9 +64,9 @@ let draw_box w h body apple =
 
   flush Stdlib.stdout
 
-type dir = Up | Down | Left | Right | NoDir
+type dir = Up | Down | Left | Right | NoDir (* new direction type *)
 
-let read_available () : string option =
+let read_available () : string option = (* read available input *)
   let fd = descr_of_in_channel Stdlib.stdin in
   let ready,_,_ = select [fd] [] [] 0.0 in
   if ready = [] then None
@@ -77,7 +75,7 @@ let read_available () : string option =
     let n = read fd buf 0 16 in
     if n <= 0 then None else Some (Bytes.sub_string buf 0 n)
 
-let parse_input (s:string) : dir * bool =
+let parse_input (s:string) : dir * bool = (* parse user input *)
   (* returns (direction, quit) *)
   let quit = String.exists (fun c -> c='l' || c='L') s in
   (* Arrow keys: ESC [ A/B/C/D *)
@@ -96,34 +94,36 @@ let parse_input (s:string) : dir * bool =
   in
   (d, quit)
 
-let spawn_apple body w h =
+let spawn_apple body w h = (* spawn 1 new apple position *)
   let taken = Deque.to_list body in
   let rec pick () =
     let x = Random.int w in
     let y = Random.int h in
-    if List.mem (x, y) taken then pick () else (x, y)
+    if List.mem (x, y) taken then pick () else (x, y) (* pick a new position if taken (call pick recursively) *)
   in
   pick ()
 
-let string_of_dir d =
+(* let string_of_dir d =
   match d with
   | Up -> "Up"
   | Down -> "Down"
   | Left -> "Left"
   | Right -> "Right"
-  | NoDir -> "NoDir"
+  | NoDir -> "NoDir" *)
 
 (* ---- main loop ---- *)
 let () =
   enable_raw ();
   Random.self_init ();
 
-  let w, h = 25, 25 in
+  let w, h = 25, 25 in (* dimensions of the unix box *)
   let dir_xy  = ref Up in
   let x = ref (w / 2) in
   let y = ref (h / 2) in
   let body = Deque.create () in
-  Deque.push_front body (!x, !y);
+  for _ = 1 to 3 do
+    Deque.push_front body (!x, !y)
+  done;
   let apple = ref (spawn_apple body w h) in
 
   let clamp v lo hi = max lo (min hi v) in
@@ -140,6 +140,7 @@ let () =
   let running = ref true in
   while !running do
     let t0 = Unix.gettimeofday () in
+    (* check for user input *)
     let fd = descr_of_in_channel Stdlib.stdin in
     let readable, _, _ = Unix.select [fd] [] [] period in
 
@@ -158,20 +159,26 @@ let () =
     end;
 
     (* do the work once per period *)
-    apply_dir !dir_xy;
-    let new_head = (!x, !y) in
-    Deque.push_front body new_head;
-    if new_head = !apple then (
-      apple := spawn_apple body w h
-    ) else ignore (Deque.pop_back body);
-    
-    draw_box w h body !apple;
-    Printf.printf "%s\n%!" (string_of_dir !dir_xy);
-    Printf.printf "len=%d\n%!" (Deque.length body);
-    Deque.iter body (fun (x, y) -> Printf.printf "(%d,%d)\n%!" x y);
+    apply_dir !dir_xy; (* apply direction *)
+    let new_head = (!x, !y) in (* new head position *)
+    match new_head with
+    | hx, hy when hx < 0 || hx >= w || hy < 0 || hy >= h ->
+        running := false  (* hit wall *)
+    | _ when List.mem new_head (Deque.to_list body) ->
+        running := false  (* hit itself *)
+    | _ -> begin
+      let new_head = (!x, !y) in (* new head position *)
+      Deque.push_front body new_head; (* add new head to the snake body *)
+      if new_head = !apple then ( (* if the snake eats the apple *)
+        apple := spawn_apple body w h (* spawn a new apple *)
+      ) else ignore (Deque.pop_back body); (* remove last segment of the snake body *)
 
-    (* keep stable rate: sleep remaining time if any *)
-    let elapsed = Unix.gettimeofday () -. t0 in
-    if elapsed < period then Unix.sleepf (period -. elapsed) else ()
+      draw_box w h body !apple; (* draw the box *)
+      Printf.printf "len=%d\n%!" (Deque.length body);
+      print_string "\027[?25l"; (* hide cursor *)
+
+      (* keep stable rate: sleep remaining time if any *)
+      let elapsed = Unix.gettimeofday () -. t0 in
+      if elapsed < period then Unix.sleepf (period -. elapsed) else () end; 
 
   done
