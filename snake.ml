@@ -76,6 +76,8 @@ let draw_box w h body apple = (* draw box in unix terminal *)
     if unicode then ("┌", "─", "┐", "│", "│", "└", "─", "┘")
     else ("+", "-", "+", "|", "|", "+", "-", "+") in
   clear_screen ();
+  hide_cursor;
+
   let grid = Array.init h (fun _ -> Array.make w " ") in
 
   (* apple *)
@@ -92,6 +94,8 @@ let draw_box w h body apple = (* draw box in unix terminal *)
        List.iter (fun (x, y) ->
            if y >= 0 && y < h && x >= 0 && x < w then grid.(y).(x) <- (green ^ "o" ^ reset); (* body: o in green *)
          ) tl);
+
+  Printf.printf "len=%d\n%!" (Deque.length body); (* print length of the snake *)
 
   (* top border *)
   Printf.printf "%s" tl;
@@ -184,13 +188,13 @@ let () =
     | NoDir -> ()
   in
   
-  let period = 0.2 in (* seconds *)
+  let period = ref 0.2 in (* seconds *)
   let running = ref true in
   while !running do
     let t0 = Unix.gettimeofday () in
     (* check for user input *)
     let fd = descr_of_in_channel Stdlib.stdin in
-    let readable, _, _ = Unix.select [fd] [] [] period in
+    let readable, _, _ = Unix.select [fd] [] [] !period in
 
     (* if there's input, drain all available inputs (non-blocking) *)
     if readable <> [] then begin
@@ -218,15 +222,14 @@ let () =
       let new_head = (!x, !y) in (* new head position *)
       Deque.push_front body new_head; (* add new head to the snake body *)
       if new_head = !apple then ( (* if the snake eats the apple *)
-        apple := spawn_apple body w h (* spawn a new apple *)
+        apple := spawn_apple body w h; (* spawn a new apple *)
+        period := max 0.05 (!period -. 0.02) (* speed up the game *)
       ) else ignore (Deque.pop_back body); (* remove last segment of the snake body *)
 
       draw_box w h body !apple; (* draw the box *)
-      Printf.printf "len=%d\n%!" (Deque.length body);
-      hide_cursor;
 
       (* keep stable rate: sleep remaining time if any *)
       let elapsed = Unix.gettimeofday () -. t0 in
-      if elapsed < period then Unix.sleepf (period -. elapsed) else () end; 
+      if elapsed < !period then Unix.sleepf (!period -. elapsed) else () end; 
 
   done
