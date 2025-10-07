@@ -52,7 +52,29 @@ let restore_terminal () = (* restore terminal settings *)
 
 let () = at_exit restore_terminal
 
+let contains_sub s sub = (* check if string s contains substring sub *)
+  let len = String.length sub in
+  let rec aux i =
+    if i + len > String.length s then false
+    else if String.sub s i len = sub then true
+    else aux (i+1)
+  in aux 0
+
+let supports_unicode () = (* check if terminal supports unicode (utf8) *)
+  try
+    let lang = Sys.getenv "LANG" in
+    contains_sub (String.lowercase_ascii lang) "utf"
+  with Not_found ->
+    try
+      let lc_ctype = Sys.getenv "LC_CTYPE" in
+      contains_sub (String.lowercase_ascii lc_ctype) "utf"
+    with Not_found -> false
+
 let draw_box w h body apple = (* draw box in unix terminal *)
+  let unicode = supports_unicode () in
+  let (tl, t, tr, l, r, bl, b, br) = (* box drawing characters *)
+    if unicode then ("┌", "─", "┐", "│", "│", "└", "─", "┘")
+    else ("+", "-", "+", "|", "|", "+", "-", "+") in
   clear_screen ();
   let grid = Array.init h (fun _ -> Array.make w " ") in
 
@@ -72,21 +94,21 @@ let draw_box w h body apple = (* draw box in unix terminal *)
          ) tl);
 
   (* top border *)
-  Printf.printf "+";
-  for _ = 0 to w - 1 do Printf.printf "-" done;
-  Printf.printf "+\n";
+  Printf.printf "%s" tl;
+  for _ = 0 to w - 1 do Printf.printf "%s" t done;
+  Printf.printf "%s\n" tr;
 
   (* content *)
   for y = 0 to h - 1 do
-    Printf.printf "|";
+    Printf.printf "%s" l;
     for x = 0 to w - 1 do Printf.printf "%s" grid.(y).(x) done;
-    Printf.printf "|\n";
+    Printf.printf "%s\n" r;
   done;
 
   (* bottom border *)
-  Printf.printf "+";
-  for _ = 0 to w - 1 do Printf.printf "-" done;
-  Printf.printf "+\n";
+  Printf.printf "%s" bl;
+  for _ = 0 to w - 1 do Printf.printf "%s" b done;
+  Printf.printf "%s\n" br;
 
   flush Stdlib.stdout
 
