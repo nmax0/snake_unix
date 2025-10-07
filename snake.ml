@@ -1,10 +1,38 @@
 (* dune exec ./snake.exe *)
-(* \027 = ESC *)
+
+(* A simple snake game in the terminal using OCaml.
+   Controls: Arrow keys or ZQSD (Z=Up, Q=Left, S=Down, D=Right)
+   Quit: L key *)
+
+(* escape sequences : 
+  "\027[31mA\027[0m"
+  \027 : escape
+  [31m : set color to red
+  A : the character to display
+  \027[0m : reset color
+*)
 
 open Unix
 
+let esc = "\027["
+
+(* ansi escape colors *)
+let _black = esc ^ "30m"
+let red = esc ^ "31m"
+let green = esc ^ "32m"
+let _yellow = esc ^ "33m"
+let _blue = esc ^ "34m"
+let _magenta = esc ^ "35m"
+let _cyan = esc ^ "36m"
+let _white = esc ^ "37m"
+let reset = esc ^ "0m"
+
 (* ---- terminal raw mode ---- *)
 let orig_attr = ref None
+
+let show_cursor = print_string (esc ^ "?25h")
+let hide_cursor = print_string (esc ^ "?25l")
+let clear_screen () = print_string (esc ^ "2J" ^ esc ^ "H")
 
 let enable_raw () =
   let fd = descr_of_in_channel Stdlib.stdin in
@@ -19,12 +47,10 @@ let restore_terminal () = (* restore terminal settings *)
    | Some a ->
        let fd = descr_of_in_channel Stdlib.stdin in
        tcsetattr fd TCSANOW a);
-  print_string "\027[?25h";
+  show_cursor;
   flush Stdlib.stdout
 
 let () = at_exit restore_terminal
-
-let clear_screen () = Printf.printf "\027[2J\027[H"
 
 let draw_box w h body apple = (* draw box in unix terminal *)
   clear_screen ();
@@ -32,7 +58,7 @@ let draw_box w h body apple = (* draw box in unix terminal *)
 
   (* apple *)
   let (ax, ay) = apple in
-  if ay >= 0 && ay < h && ax >= 0 && ax < w then grid.(ay).(ax) <- "@";
+  if ay >= 0 && ay < h && ax >= 0 && ax < w then grid.(ay).(ax) <- (red ^ "@" ^ reset); (* apple: @ in red *)
 
   (* snake *)
   let segs = Deque.to_list body in
@@ -40,9 +66,9 @@ let draw_box w h body apple = (* draw box in unix terminal *)
     | [] -> ()
     | hd :: tl ->
        let (hx, hy) = hd in
-       if hy >= 0 && hy < h && hx >= 0 && hx < w then grid.(hy).(hx) <- "X";
+       if hy >= 0 && hy < h && hx >= 0 && hx < w then grid.(hy).(hx) <- (green ^ "X" ^ reset); (* head: X in green *)
        List.iter (fun (x, y) ->
-           if y >= 0 && y < h && x >= 0 && x < w then grid.(y).(x) <- "o"
+           if y >= 0 && y < h && x >= 0 && x < w then grid.(y).(x) <- (green ^ "o" ^ reset); (* body: o in green *)
          ) tl);
 
   (* top border *)
@@ -175,7 +201,7 @@ let () =
 
       draw_box w h body !apple; (* draw the box *)
       Printf.printf "len=%d\n%!" (Deque.length body);
-      print_string "\027[?25l"; (* hide cursor *)
+      hide_cursor;
 
       (* keep stable rate: sleep remaining time if any *)
       let elapsed = Unix.gettimeofday () -. t0 in
